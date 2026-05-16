@@ -394,47 +394,48 @@
     bridge.focusMain().catch(() => {});
   });
 
-  // Open Pro Sender Panel — fires the exact event procntt.js listens for
+  // Open Pro Sender Panel — uses direct IPC to trigger togglePanel() in WA BrowserView
   $("btnOpenPanel").addEventListener("click", function() {
     btnFeedback(this);
     bridge.focusMain().catch(() => {});
-    wa(`document.dispatchEvent(new CustomEvent('cwp_open_panel'));`);
+    bridge.waOpenPanel().catch(() => {});
   });
 
   // Open Scheduler — open panel then click Scheduler tab inside it
   $("btnScheduler").addEventListener("click", function() {
     btnFeedback(this);
     bridge.focusMain().catch(() => {});
-    wa(`
-      (function(){
-        document.dispatchEvent(new CustomEvent('cwp_open_panel'));
-        // Give the panel 400ms to render, then click the Scheduler tab
-        setTimeout(function(){
-          var tabs = document.querySelectorAll('.cwp-tab, [data-tab], .pro-tab-btn');
-          tabs.forEach(function(t){
-            if (t.textContent && t.textContent.toLowerCase().includes('schedul')) t.click();
-          });
-        }, 400);
-      })();
-    `);
+    bridge.waOpenPanel().then(() => {
+      setTimeout(() => {
+        bridge.waExecute(`
+          (function(){
+            var tabs = document.querySelectorAll('.cwp-tab, [data-tab], .pro-tab-btn');
+            tabs.forEach(function(t){
+              if (t.textContent && t.textContent.toLowerCase().includes('schedul')) t.click();
+            });
+          })();
+        `);
+      }, 400);
+    }).catch(() => {});
   });
 
   // Open Auto Reply — open panel then click Auto Reply tab
   $("btnAutoReply").addEventListener("click", function() {
     btnFeedback(this);
     bridge.focusMain().catch(() => {});
-    wa(`
-      (function(){
-        document.dispatchEvent(new CustomEvent('cwp_open_panel'));
-        setTimeout(function(){
-          var tabs = document.querySelectorAll('.cwp-tab, [data-tab], .pro-tab-btn');
-          tabs.forEach(function(t){
-            if (t.textContent && t.textContent.toLowerCase().includes('auto') ||
-                t.textContent.toLowerCase().includes('reply')) t.click();
-          });
-        }, 400);
-      })();
-    `);
+    bridge.waOpenPanel().then(() => {
+      setTimeout(() => {
+        bridge.waExecute(`
+          (function(){
+            var tabs = document.querySelectorAll('.cwp-tab, [data-tab], .pro-tab-btn');
+            tabs.forEach(function(t){
+              if (t.textContent && t.textContent.toLowerCase().includes('auto') ||
+                  t.textContent.toLowerCase().includes('reply')) t.click();
+            });
+          })();
+        `);
+      }, 400);
+    }).catch(() => {});
   });
 
   // Export Group Contacts — fire the PROS export event

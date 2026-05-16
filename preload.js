@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("cwpBridge", {
   // WhatsApp page control
   waExecute:    (code)             => ipcRenderer.invoke("wa:executeScript", code),
   waSendToPage: (channel, payload) => ipcRenderer.invoke("wa:sendToPage", channel, payload),
+  waOpenPanel:  ()                 => ipcRenderer.invoke("wa:openPanel"),
 
   // Focus the main WhatsApp window
   focusMain: () => ipcRenderer.invoke("focusMain"),

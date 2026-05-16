@@ -104,15 +104,25 @@ function createMainWindow() {
   waView.webContents.on("did-finish-load", () => setTimeout(injectExtensionScripts, 800));
   waView.webContents.on("did-navigate-in-page", () => setTimeout(injectExtensionScripts, 1800));
 
+  // Listen for panel open requests from the WA page (procntt.js)
+  waView.webContents.on("ipc-message", (event, channel) => {
+    if (channel === "cwp:open-panel") {
+      console.log("[CWP] Panel open request received from WA page");
+      triggerPanelOpen();
+    }
+  });
+
   mainWindow.on("resize",    sizeWaView);
   mainWindow.on("maximize",  sizeWaView);
   mainWindow.on("unmaximize", sizeWaView);
   mainWindow.on("close", e => { if (!isQuitting) { e.preventDefault(); mainWindow.hide(); } });
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
+    // Delay panel slightly so main window is fully settled first
     setTimeout(openPanelWindow, 1200);
   });
 
+  // Fallback: open panel if main window never fired ready-to-show
   setTimeout(() => {
     if (mainWindow && !mainWindow.isVisible()) mainWindow.show();
     if (!panelWindow || panelWindow.isDestroyed()) openPanelWindow();
@@ -126,63 +136,44 @@ function sizeWaView() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SAFE injection helper — uses JSON.stringify to encode code as a string,
-// then eval()s it inside the page. This handles backticks, template literals,
-// special characters, and any file size without breaking.
+// Injection helpers
 // ─────────────────────────────────────────────────────────────────────────────
-async function safeInject(wc, code, label) {
-  const name = label || "script";
+async function injectInline(wc, scriptPath) {
+  const name = path.basename(scriptPath);
   try {
-    // JSON.stringify produces a valid JS string literal — safe for any content
-    const encoded = JSON.stringify(code);
-    // We eval the string inside a try/catch wrapper
+    let code = fs.readFileSync(scriptPath, "utf8");
+    if (code.charCodeAt(0) === 0xFEFF) code = code.slice(1);
     await wc.executeJavaScript(
-      "(function(){ try { eval(" + encoded + "); } catch(e){ console.error('[CWP] Error in " + name + ":', e.message, e.stack ? e.stack.split('\\n')[1] : ''); } })(); void 0;",
+      `(function(){\ntry{\n${code}\n}catch(__e){console.error('[CWP] Runtime error in ${name}:',__e.message);}\n})(); void 0;`,
       false
     );
-    console.log("[CWP] ✓ injected:", name);
+    console.log("[CWP] ✓ inline:", name);
     return true;
   } catch (e) {
-    console.warn("[CWP] inject failed:", name, "→", e.message);
+    console.warn("[CWP] inline inject failed:", name, "→", e.message);
     return false;
   }
 }
 
-async function safeInjectFile(wc, filePath, patchFn) {
-  const name = path.basename(filePath);
-  try {
-    let code = fs.readFileSync(filePath, "utf8");
-    if (code.charCodeAt(0) === 0xFEFF) code = code.slice(1); // strip BOM
-    if (patchFn) code = patchFn(code);
-    return await safeInject(wc, code, name);
-  } catch (e) {
-    console.warn("[CWP] file read failed:", name, "→", e.message);
-    return false;
-  }
-}
-
-async function injectScriptTag(wc, cwpUrl) {
+async function injectScriptTagAwaited(wc, cwpUrl) {
   const name = cwpUrl.split("/").pop();
-  const marker = "cwp_done_" + name.replace(/\W/g, "_") + "_" + Date.now();
+  const eventName = `cwp_loaded_${name.replace(/\./g, "_")}_${Date.now()}`;
   try {
-    await wc.executeJavaScript(
-      "(function(){"
-      + "var s=document.createElement('script');"
-      + "s.src=" + JSON.stringify(cwpUrl) + ";"
-      + "s.onload=function(){window[" + JSON.stringify(marker) + "]=true;};"
-      + "s.onerror=function(){window[" + JSON.stringify(marker) + "]=true; console.error('[CWP] script load error: " + name + "');};"
-      + "(document.head||document.documentElement).appendChild(s);"
-      + "})(); void 0;",
-      false
-    );
-    // Wait up to 5s for the script to load
-    let waited = 0;
-    while (waited < 5000) {
-      await new Promise(r => setTimeout(r, 200));
-      waited += 200;
-      const done = await wc.executeJavaScript("!!window[" + JSON.stringify(marker) + "]; void 0;", false).catch(() => false);
-      if (done) break;
-    }
+    await wc.executeJavaScript(`
+      (function(){
+        var s = document.createElement('script');
+        s.src = ${JSON.stringify(cwpUrl)};
+        s.onload  = function(){ window.dispatchEvent(new CustomEvent(${JSON.stringify(eventName)})); };
+        s.onerror = function(){ console.error('[CWP] load error: ${name}'); window.dispatchEvent(new CustomEvent(${JSON.stringify(eventName)})); };
+        (document.head || document.documentElement).appendChild(s);
+      })();
+    `, false);
+    await wc.executeJavaScript(`
+      new Promise(function(resolve){
+        var t = setTimeout(resolve, 4000);
+        window.addEventListener(${JSON.stringify(eventName)}, function(){ clearTimeout(t); resolve(); }, { once: true });
+      });
+    `, false);
     console.log("[CWP] ✓ script-tag:", name);
     return true;
   } catch (e) {
@@ -196,40 +187,31 @@ async function injectScriptTag(wc, cwpUrl) {
 // ─────────────────────────────────────────────────────────────────────────────
 async function injectExtensionScripts() {
   const wc = waView.webContents;
-  const LOG = path.join(__dirname, "cwp_inject.log");
-  const log = (msg) => { console.log(msg); try { fs.appendFileSync(LOG, new Date().toISOString() + " " + msg + "\n"); } catch(_){} };
 
-  log("[CWP] === Starting injection ===");
-
-  // 1. Set base URL + inject chrome shim
   try {
-    await wc.executeJavaScript('window.__CWP_EXT_BASE__ = "cwp://ext"; void 0;');
-    log("[CWP] EXT_BASE set");
-
     let shimCode = fs.readFileSync(SHIM_PATH, "utf8");
     if (shimCode.charCodeAt(0) === 0xFEFF) shimCode = shimCode.slice(1);
-    await safeInject(wc, shimCode, "chrome-shim.js");
-    log("[CWP] shim done");
+    await wc.executeJavaScript(`window.__CWP_EXT_BASE__ = "cwp://ext"; void 0;`);
+    await wc.executeJavaScript(shimCode + "; void 0;");
+    console.log("[CWP] chrome-shim.js injected");
   } catch (e) {
-    log("[CWP] FATAL shim failed: " + e.message);
+    console.error("[CWP] FATAL: shim inject failed:", e.message);
     return;
   }
 
-  // 2. CSS
   for (const f of [
     path.join(EXT_DIR, "css", "driver.css"),
     path.join(EXT_DIR, "css", "procntt.css"),
   ]) {
     try {
       await wc.insertCSS(fs.readFileSync(f, "utf8"));
-      log("[CWP] css: " + path.basename(f));
+      console.log("[CWP] ✓ css:", path.basename(f));
     } catch (e) {
-      log("[CWP] css failed: " + path.basename(f) + " " + e.message);
+      console.warn("[CWP] CSS failed:", path.basename(f), e.message);
     }
   }
 
-  // 3. Core scripts (order matters)
-  const coreScripts = [
+  const smallScripts = [
     path.join(EXT_DIR, "js", "library", "jquery.js"),
     path.join(EXT_DIR, "js", "library", "driver.js.iife.js"),
     path.join(EXT_DIR, "js", "prodata.js"),
@@ -238,55 +220,66 @@ async function injectExtensionScripts() {
     path.join(EXT_DIR, "js", "driver.js"),
     path.join(EXT_DIR, "js", "promsg.js"),
   ];
-  for (const s of coreScripts) {
-    const ok = await safeInjectFile(wc, s);
-    log("[CWP] " + (ok ? "✓" : "✗") + " " + path.basename(s));
+  for (const s of smallScripts) await injectInline(wc, s);
+
+  await wc.executeJavaScript(`
+    if (typeof isAdvanceFeatureAvailable === 'undefined') window.isAdvanceFeatureAvailable = function(){ return true; };
+    if (typeof isExpired === 'undefined')                  window.isExpired                = function(){ return false; };
+    if (window.chrome && !window.chrome.runtime.getManifest) window.chrome.runtime.getManifest = function(){ return { version: '1.4.1', name: 'Cyber WhatsApp Pro' }; };
+    void 0;
+  `);
+
+  // Inject procntt.js inline with patching to expose togglePanel globally
+  try {
+    let procnttCode = fs.readFileSync(path.join(EXT_DIR, "js", "procntt.js"), "utf8");
+    if (procnttCode.charCodeAt(0) === 0xFEFF) procnttCode = procnttCode.slice(1);
+    
+    // Patch: expose togglePanel globally so Electron can call it
+    procnttCode = procnttCode.replace(
+      /function togglePanel\(\)/,
+      'window.togglePanel = function togglePanel()'
+    );
+    
+    // Escape for template literal
+    procnttCode = procnttCode.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
+    
+    await wc.executeJavaScript(`(function(){ try { ${procnttCode} } catch(e) { console.error('[CWP] procntt.js error:', e); } })(); void 0;`);
+    console.log("[CWP] ✓ procntt.js injected inline (togglePanel exposed)");
+  } catch (e) {
+    console.error("[CWP] procntt.js injection failed:", e.message);
   }
 
-  // 4. Globals needed by the extension scripts
-  await safeInject(wc,
-    "if(typeof isAdvanceFeatureAvailable==='undefined') window.isAdvanceFeatureAvailable=function(){return true;};" +
-    "if(typeof isExpired==='undefined') window.isExpired=function(){return false;};" +
-    "if(window.chrome&&!window.chrome.runtime.getManifest) window.chrome.runtime.getManifest=function(){return{version:'1.4.1',name:'Cyber WhatsApp Pro'};};"
-  , "globals");
+  // Add floating trigger button for Pro Sender panel
+  try {
+    await wc.executeJavaScript(`
+      (function(){
+        if (document.getElementById('cwp-trigger-btn')) return;
+        var btn = document.createElement('div');
+        btn.id = 'cwp-trigger-btn';
+        btn.innerHTML = '🚀 Pro Sender';
+        btn.style.cssText = 'position:fixed;top:12px;right:12px;z-index:99999;background:linear-gradient(135deg,#25d366,#128c7e);color:#fff;padding:10px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.3);font-family:-apple-system,BlinkMacSystemFont,sans-serif;user-select:none;';
+        btn.onclick = function(){
+          try {
+            if (typeof window.togglePanel === 'function') { window.togglePanel(); }
+            else { document.dispatchEvent(new CustomEvent('cwp_open_panel')); }
+          } catch(e) { console.error('[CWP] Panel toggle error:', e); }
+        };
+        document.body.appendChild(btn);
+        console.log('[CWP] ✓ Floating trigger button added');
+      })();
+    `);
+  } catch (e) {
+    console.error("[CWP] Trigger button injection failed:", e.message);
+  }
 
-  // 5. procntt.js — patched so togglePanel is on window for IPC access
-  const procnttOk = await safeInjectFile(wc, path.join(EXT_DIR, "js", "procntt.js"), (code) => {
-    // Expose togglePanel on window — it's inside cwpFloatingPanel() IIFE
-    return code.replace(
-      /function togglePanel\(\)/,
-      "window.togglePanel = function togglePanel()"
-    );
-  });
-  log("[CWP] procntt.js: " + (procnttOk ? "✓" : "✗"));
+  await injectScriptTagAwaited(wc, "cwp://ext/js/proinjt.js");
 
-  // 6. Floating trigger button — added AFTER procntt so listener is registered
-  await safeInject(wc,
-    "(function(){"
-    + "if(document.getElementById('cwp-trigger-btn')) return;"
-    + "var btn=document.createElement('div');"
-    + "btn.id='cwp-trigger-btn';"
-    + "btn.textContent='\\uD83D\\uDE80 Pro Sender';"
-    + "btn.style.cssText='position:fixed;top:12px;right:12px;z-index:99999;background:linear-gradient(135deg,#25d366,#128c7e);color:#fff;padding:10px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.3);font-family:sans-serif;user-select:none;';"
-    + "btn.onclick=function(){"
-    + "  if(typeof window.togglePanel==='function'){window.togglePanel();}"
-    + "  else{document.dispatchEvent(new CustomEvent('cwp_open_panel'));}"
-    + "};"
-    + "document.body.appendChild(btn);"
-    + "console.log('[CWP] trigger button added');"
-    + "})();"
-  , "trigger-button");
-  log("[CWP] trigger button injected");
-
-  // 7. proinjt.js via script tag (loads propup.html iframe as cwp:// URL)
-  const proinjOk = await injectScriptTag(wc, "cwp://ext/js/proinjt.js");
-  log("[CWP] proinjt.js: " + (proinjOk ? "✓" : "✗"));
-
-  log("[CWP] === Injection complete ===");
+  console.log("[CWP] Injection complete ✓");
 }
 
-// ── Pro Panel (side) window ───────────────────────────────────────────────────
+// ── Pro Panel window ──────────────────────────────────────────────────────────
 function openPanelWindow() {
+  // If already open, just bring it forward
   if (panelWindow && !panelWindow.isDestroyed()) {
     if (panelWindow.isMinimized()) panelWindow.restore();
     panelWindow.show();
@@ -303,24 +296,34 @@ function openPanelWindow() {
       nodeIntegration: false,
       contextIsolation: true,
     },
-    show: false,
+    show: false,                 // start hidden; we show after load
     backgroundColor: "#1f2c34",
     alwaysOnTop: false,
   });
 
   panelWindow.loadFile(path.join(__dirname, "renderer", "panel.html"));
 
-  panelWindow.once("ready-to-show", () => { panelWindow.show(); panelWindow.focus(); });
+  // Show as soon as content is ready
+  panelWindow.once("ready-to-show", () => {
+    panelWindow.show();
+    panelWindow.focus();
+  });
 
+  // Fallback: force-show after 3 s in case ready-to-show never fires
   const forceShow = setTimeout(() => {
     if (panelWindow && !panelWindow.isDestroyed() && !panelWindow.isVisible()) {
-      panelWindow.show(); panelWindow.focus();
+      panelWindow.show();
+      panelWindow.focus();
     }
   }, 3000);
   panelWindow.once("show", () => clearTimeout(forceShow));
 
+  // Hide instead of close (keeps state)
   panelWindow.on("close", e => {
-    if (!isQuitting) { e.preventDefault(); panelWindow.hide(); }
+    if (!isQuitting) {
+      e.preventDefault();
+      panelWindow.hide();
+    }
   });
 }
 
@@ -338,15 +341,26 @@ function createTray() {
 }
 
 // ── IPC handlers ─────────────────────────────────────────────────────────────
+
+// Focus the main WhatsApp window
 ipcMain.handle("focusMain", () => {
-  if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); }
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
   return true;
 });
 
-ipcMain.handle("openPanel", () => { openPanelWindow(); return true; });
+// Open (or show) the Pro Panel window
+ipcMain.handle("openPanel", () => {
+  openPanelWindow();
+  return true;
+});
 
+// License verification — runs in main process (Node.js), no CORS
 ipcMain.handle("verifyLicense", async (_, { licenseKey, deviceId }) => {
-  console.log("[CWP] verifyLicense:", licenseKey ? licenseKey.slice(0,8)+"..." : "none");
+  console.log("[CWP] verifyLicense called for key:", licenseKey ? licenseKey.slice(0,8)+"..." : "none");
   try {
     const https = require("https");
     return await new Promise((resolve) => {
@@ -364,55 +378,59 @@ ipcMain.handle("verifyLicense", async (_, { licenseKey, deviceId }) => {
       };
       const req = https.request(opts, (res) => {
         let data = "";
-        res.on("data", c => data += c);
+        res.on("data", chunk => data += chunk);
         res.on("end", () => {
-          try { resolve({ ok: true, status: res.statusCode, data: JSON.parse(data) }); }
-          catch { resolve({ ok: false, status: res.statusCode, error: "Bad JSON: " + data.slice(0,100) }); }
+          console.log("[CWP] License API status:", res.statusCode, "body:", data.slice(0, 200));
+          try {
+            const parsed = JSON.parse(data);
+            resolve({ ok: true, status: res.statusCode, data: parsed });
+          } catch {
+            resolve({ ok: false, status: res.statusCode, error: "Server returned: " + data.slice(0, 100) });
+          }
         });
       });
-      req.on("error", e => resolve({ ok: false, error: e.message }));
-      req.setTimeout(20000, () => { req.destroy(); resolve({ ok: false, error: "Timeout" }); });
-      req.write(body); req.end();
+      req.on("error", e => {
+        console.error("[CWP] License API network error:", e.message);
+        resolve({ ok: false, error: e.message });
+      });
+      req.setTimeout(20000, () => { req.destroy(); resolve({ ok: false, error: "Request timed out after 20s" }); });
+      req.write(body);
+      req.end();
     });
-  } catch (e) { return { ok: false, error: e.message }; }
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 
 ipcMain.handle("store:get",    (_, k)   => store.get(k));
 ipcMain.handle("store:set",    (_, obj) => { for (const [k,v] of Object.entries(obj)) store.set(k,v); return true; });
 ipcMain.handle("store:remove", (_, k)   => { store.delete(k); return true; });
 ipcMain.handle("store:getAll", ()       => store.store);
-ipcMain.handle("notify", (_, {title, message}) => {
+ipcMain.handle("notify",       (_, {title, message}) => {
   if (Notification.isSupported()) new Notification({ title, body: message }).show();
 });
 ipcMain.handle("openExternal", (_, url) => shell.openExternal(url));
-
 ipcMain.handle("wa:executeScript", async (_, code) => {
   try { return await waView.webContents.executeJavaScript(code); } catch { return null; }
 });
-
 ipcMain.handle("wa:openPanel", async () => {
   try {
-    // Use safeInject to avoid template literal issues even for this small snippet
-    await safeInject(waView.webContents,
-      "(function(){"
-      + "if(typeof window.togglePanel==='function'){"
-      + "  window.togglePanel();"
-      + "  console.log('[CWP] window.togglePanel() called via IPC');"
-      + "}else{"
-      + "  document.dispatchEvent(new CustomEvent('cwp_open_panel'));"
-      + "  console.log('[CWP] cwp_open_panel dispatched via IPC');"
-      + "}"
-      + "})();"
-    , "wa:openPanel");
+    await waView.webContents.executeJavaScript(`
+      (function(){
+        try {
+          if (typeof togglePanel === 'function') { togglePanel(); console.log('[CWP] togglePanel() called via IPC'); }
+          else { document.dispatchEvent(new CustomEvent('cwp_open_panel')); console.log('[CWP] cwp_open_panel event dispatched via IPC'); }
+        } catch(e) { console.error('[CWP] wa:openPanel error:', e); }
+      })();
+    `);
     return true;
   } catch { return false; }
 });
-
 ipcMain.handle("wa:sendToPage", async (_, channel, payload) => {
   try {
-    await safeInject(waView.webContents,
-      "window.dispatchEvent(new CustomEvent('cwp:fromPanel',{detail:" + JSON.stringify({channel, payload}) + "}));"
-    , "wa:sendToPage");
+    await waView.webContents.executeJavaScript(
+      `window.dispatchEvent(new CustomEvent('cwp:fromPanel',{detail:${JSON.stringify({channel,payload})}}));`
+    );
     return true;
   } catch { return false; }
 });
@@ -434,4 +452,7 @@ app.on("activate", () => { if (mainWindow) { mainWindow.show(); mainWindow.focus
 app.on("before-quit", () => { isQuitting = true; });
 app.on("child-process-gone", (event, details) => {
   console.warn("[CWP] Child process gone:", details.type, details.reason);
+  if (details.type === "Utility" && details.serviceName === "network.mojom.NetworkService") {
+    console.log("[CWP] Network service crashed — app will continue.");
+  }
 });
