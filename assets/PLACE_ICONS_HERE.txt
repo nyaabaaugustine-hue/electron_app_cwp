@@ -1,0 +1,7 @@
+place icon files here:
+
+  icon.ico   (256×256)  — Windows installer + taskbar
+  icon.icns  (512×512)  — macOS dock
+  icon.png   (512×512)  — Linux + tray fallback
+
+The app falls back to chrome_Extenton/logo/pro-large.png if no icon is found here.

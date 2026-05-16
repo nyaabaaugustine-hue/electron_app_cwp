@@ -1,0 +1,63 @@
+{
+  "name": "cyber-whatsapp-pro",
+  "version": "1.4.1",
+  "description": "Cyber WhatsApp Pro – Desktop Edition",
+  "main": "main.js",
+  "author": "Cyber WhatsApp Pro",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win --x64",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "electron": "^29.4.6",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.cyberwhatsapppro.desktop",
+    "productName": "Cyber WhatsApp Pro",
+    "copyright": "Copyright © 2024 Cyber WhatsApp Pro",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "chrome-shim.js",
+      "renderer/**/*",
+      "assets/**/*",
+      "node_modules/**/*",
+      "../chrome_Extenton/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../chrome_Extenton",
+        "to": "chrome_Extenton"
+      }
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Cyber WhatsApp Pro"
+    }
+  }
+}

@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cyber WhatsApp Pro – Desktop</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; background: #111b21; color: #e9edef; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow-y: auto; }
+
+    .header { background: #1f2c34; padding: 14px 16px; border-bottom: 1px solid #2a3942; }
+    .header-inner { display: flex; align-items: center; justify-content: space-between; }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand img { width: 32px; height: 32px; border-radius: 6px; }
+    .brand-name { font-size: 14px; font-weight: 700; color: #e9edef; display: block; }
+    .brand-sub  { font-size: 10px; color: #8696a0; display: block; }
+    .plan-badge { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 12px; background: #2a3942; color: #8696a0; letter-spacing: .5px; }
+
+    .status-card { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #1f2c34; margin: 12px; border-radius: 10px; }
+    .status-icon { font-size: 28px; }
+    .status-label { font-size: 10px; color: #8696a0; margin-bottom: 2px; }
+    .status-plan  { font-size: 14px; font-weight: 600; }
+    .status-detail { font-size: 11px; color: #8696a0; margin-top: 2px; }
+    .lic-toggle { margin-left: auto; background: none; border: none; color: #8696a0; cursor: pointer; font-size: 18px; padding: 4px 8px; }
+    .hidden { display: none !important; }
+
+    .activation-section { padding: 0 16px 16px; }
+    .input-label { display: block; font-size: 11px; color: #8696a0; margin-bottom: 6px; margin-top: 4px; }
+
+    .license-input {
+      width: 100%; padding: 10px 12px; background: #1f2c34; border: 2px solid #2a3942;
+      border-radius: 8px; color: #e9edef; font-size: 15px; letter-spacing: 2px;
+      outline: none; font-family: 'Courier New', monospace; text-align: center;
+      transition: border-color .2s;
+    }
+    .license-input:focus  { border-color: #25d366; }
+    .license-input.valid  { border-color: #25d366; }
+    .license-input.partial{ border-color: #ffd666; }
+    .license-input.bad    { border-color: #ff6b6b; }
+
+    .key-hint { text-align: center; font-size: 10px; color: #3d5166; margin-top: 5px; font-family: monospace; letter-spacing: .5px; min-height: 14px; }
+
+    .activate-btn {
+      width: 100%; margin-top: 10px; padding: 12px; background: linear-gradient(135deg,#25d366,#128c7e);
+      border: none; border-radius: 8px; color: #fff; font-size: 14px; font-weight: 600;
+      cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .activate-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    .msg { margin-top: 10px; padding: 10px 12px; border-radius: 8px; font-size: 13px; display: none; word-break: break-word; line-height: 1.6; }
+    .msg.show    { display: block; }
+    .msg.error   { background: #3d1515; color: #ff6b6b; border: 1px solid #5c2020; }
+    .msg.success { background: #0d2e1a; color: #25d366; border: 1px solid #1a4d2e; }
+    .msg.info    { background: #1a2a3a; color: #8ab4f8; border: 1px solid #2a4a6a; }
+    .msg.warn    { background: #2e2500; color: #ffd666; border: 1px solid #5c4a00; }
+
+    .help-text { font-size: 11px; color: #8696a0; margin-top: 12px; text-align: center; line-height: 1.7; }
+    .wa-link { color: #25d366; text-decoration: none; }
+    .wa-link:hover { text-decoration: underline; }
+
+    .premium-section { padding: 0 16px 16px; }
+    .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 14px; }
+    .feature-item { background: #1f2c34; border-radius: 8px; padding: 8px 10px; font-size: 12px; color: #25d366; }
+
+    .action-btn {
+      width: 100%; margin-bottom: 8px; padding: 11px 14px; background: #1f2c34;
+      border: 1px solid #2a3942; border-radius: 8px; color: #e9edef; font-size: 13px;
+      cursor: pointer; display: flex; align-items: center; gap: 10px; text-align: left;
+    }
+    .action-btn:hover { background: #2a3942; }
+    .action-btn .ico { font-size: 16px; }
+
+    .deactivate-btn {
+      width: 100%; padding: 10px; background: none; border: 1px solid #5c2020;
+      border-radius: 8px; color: #ff6b6b; font-size: 13px; cursor: pointer; margin-top: 8px;
+    }
+    .deactivate-btn:hover { background: #3d1515; }
+
+    .footer { padding: 12px 16px; border-top: 1px solid #2a3942; text-align: center; font-size: 11px; color: #8696a0; }
+    .version { text-align: center; font-size: 10px; color: #3d5166; padding: 6px 0 12px; font-family: monospace; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-inner">
+      <div class="brand">
+        <img src="../../chrome_Extenton/logo/pro-small.png" alt="CWP" onerror="this.style.display='none'"/>
+        <div>
+          <span class="brand-name">Cyber WhatsApp Pro</span>
+          <span class="brand-sub">Desktop Edition</span>
+        </div>
+      </div>
+      <div class="plan-badge" id="planBadge">FREE</div>
+    </div>
+  </div>
+
+  <div class="status-card">
+    <div class="status-icon" id="statusIcon">🔒</div>
+    <div class="status-info">
+      <div class="status-label">Current Plan</div>
+      <div class="status-plan"   id="statusPlan">Free Plan</div>
+      <div class="status-detail" id="statusDetail">Enter your key to unlock premium</div>
+    </div>
+    <button class="lic-toggle hidden" id="licToggle">▾</button>
+  </div>
+
+  <div class="activation-section" id="activationSection">
+    <label class="input-label">Activation Key</label>
+    <input type="text" id="licenseInput" class="license-input"
+           placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
+           autocomplete="off" spellcheck="false" maxlength="23"/>
+    <div class="key-hint" id="keyHint">Enter your 20-character key</div>
+    <button class="activate-btn" id="activateBtn">
+      <span>⚡</span><span id="btnText">Activate Premium</span>
+    </button>
+    <div class="msg" id="msgBox"></div>
+    <p class="help-text">
+      Pay via Mobile Money &amp; get your key via WhatsApp:<br/>
+      <a class="wa-link" id="supportLink" href="#">+233 54 198 8383</a>
+    </p>
+  </div>
+
+  <div class="premium-section hidden" id="premiumSection">
+    <div class="feature-grid">
+      <div class="feature-item">✓ Bulk Messaging</div>
+      <div class="feature-item">✓ Auto Reply</div>
+      <div class="feature-item">✓ Scheduler</div>
+      <div class="feature-item">✓ Export Contacts</div>
+      <div class="feature-item">✓ Anti-Delete</div>
+      <div class="feature-item">✓ Group Tools</div>
+    </div>
+    <button class="action-btn" id="btnFocusWa"><span class="ico">💬</span> Focus WhatsApp Window</button>
+    <button class="action-btn" id="btnOpenPanel"><span class="ico">🚀</span> Open Pro Sender Panel</button>
+    <button class="action-btn" id="btnScheduler"><span class="ico">⏰</span> Open Scheduler</button>
+    <button class="action-btn" id="btnAutoReply"><span class="ico">🤖</span> Open Auto Reply</button>
+    <button class="action-btn" id="btnContacts"><span class="ico">👥</span> Export Group Contacts</button>
+    <div id="deactivateWrap" class="hidden">
+      <button class="deactivate-btn" id="deactivateBtn">Deactivate License</button>
+    </div>
+  </div>
+
+  <div class="footer">Support: <a class="wa-link" id="footerLink" href="#">+233 54 198 8383</a></div>
+  <div class="version">v1.4.1 · Desktop Edition</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const STORAGE_KEY = "cwp_license";
+  const SUPPORT_WA  = "https://wa.me/233541988383";
+
+  // Backend requires EXACTLY 5-5-5-5 (from keyGenerator.js isValidKeyFormat)
+  const KEY_RE = /^[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}$/;
+
+  const OWNER_KEYS = new Set([
+    "5U6DE-SKO94-9127C-JRNBY",
+    "FCUCS-6VM6S-UHD3B-EP7SB",
+  ]);
+
+  const bridge = window.cwpBridge;
+  if (!bridge) {
+    document.body.innerHTML = '<div style="padding:30px;color:#ff6b6b;font-family:monospace">❌ Bridge not loaded — restart the app.</div>';
+    return;
+  }
+
+  const $ = id => document.getElementById(id);
+  const storeGet    = k   => bridge.storeGet(k);
+  const storeSet    = obj => bridge.storeSet(obj);
+  const storeRemove = k   => bridge.storeRemove(k);
+
+  // ── Key input auto-formatter ──────────────────────────────────────────────
+  // Strips non-alphanumeric, uppercases, caps at 20 raw chars, inserts dashes
+  const input = $("licenseInput");
+
+  function formatKey(raw) {
+    const clean = raw.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 20);
+    let fmt = "";
+    for (let i = 0; i < clean.length; i++) {
+      if (i > 0 && i % 5 === 0) fmt += "-";
+      fmt += clean[i];
+    }
+    return fmt;
+  }
+
+  input.addEventListener("input", () => {
+    const cursor = input.selectionStart;
+    const prevRawLen = input.value.slice(0, cursor).replace(/[^A-Za-z0-9]/g, "").length;
+    input.value = formatKey(input.value);
+    // Restore cursor accounting for inserted dashes
+    const newCursor = prevRawLen + Math.floor(prevRawLen / 5);
+    try { input.setSelectionRange(newCursor, newCursor); } catch (_) {}
+    updateHint();
+  });
+
+  input.addEventListener("paste", () => setTimeout(() => {
+    input.value = formatKey(input.value);
+    updateHint();
+  }, 0));
+
+  function updateHint() {
+    const v = input.value;
+    const raw = v.replace(/-/g, "");
+    const hint = $("keyHint");
+
+    if (!raw.length) {
+      input.className = "license-input";
+      hint.textContent = "Enter your 20-character key";
+      hint.style.color = "#3d5166";
+      return;
+    }
+    if (KEY_RE.test(v)) {
+      input.className = "license-input valid";
+      hint.textContent = "✓ Key complete — click Activate";
+      hint.style.color = "#25d366";
+    } else {
+      input.className = "license-input partial";
+      hint.textContent = raw.length + " / 20 characters  ·  need " + (20 - raw.length) + " more";
+      hint.style.color = "#ffd666";
+    }
+  }
+
+  // ── Messages ──────────────────────────────────────────────────────────────
+  function showMsg(text, type = "error") {
+    const el = $("msgBox");
+    el.textContent = text;
+    el.className = "msg show " + type;
+    if (type === "success") setTimeout(() => el.className = "msg", 6000);
+  }
+  function clearMsg() { $("msgBox").className = "msg"; }
+
+  // ── Storage ───────────────────────────────────────────────────────────────
+  async function getDeviceId() {
+    let id = await storeGet("cwp_device_id");
+    if (id) return id;
+    const arr = new Uint8Array(16);
+    crypto.getRandomValues(arr);
+    id = Array.from(arr).map(b => b.toString(16).padStart(2, "0")).join("");
+    await storeSet({ cwp_device_id: id });
+    return id;
+  }
+
+  async function getLicense() {
+    const lic = await storeGet(STORAGE_KEY);
+    return (lic && lic.premium) ? lic : null;
+  }
+
+  async function isPremium() {
+    const lic = await getLicense();
+    if (!lic) return false;
+    if (lic.lifetime) return true;
+    if (lic.expiry && new Date(lic.expiry) < new Date()) { await storeRemove(STORAGE_KEY); return false; }
+    return true;
+  }
+
+  function parseServerData(data) {
+    if (!data || typeof data !== "object") return { valid: false, reason: "Empty response" };
+    return {
+      valid:    data.valid === true,
+      lifetime: data.lifetime === true || data.plan === "lifetime",
+      plan:     data.plan || "premium",
+      expiry:   data.expiry || null,
+      reason:   data.error || data.message || null,
+    };
+  }
+
+  // ── UI ────────────────────────────────────────────────────────────────────
+  function showPremium(lic) {
+    $("activationSection").classList.add("hidden");
+    $("premiumSection").classList.remove("hidden");
+    $("licToggle").classList.remove("hidden");
+    const label = lic.lifetime ? "Lifetime" : (lic.plan || "Premium");
+    $("planBadge").textContent = label.toUpperCase();
+    $("planBadge").style.cssText = "background:linear-gradient(135deg,#25d366,#128c7e);color:#fff";
+    $("statusIcon").textContent   = "✅";
+    $("statusPlan").textContent   = label + " Plan";
+    $("statusDetail").textContent = lic.lifetime
+      ? "Lifetime access · never expires"
+      : "Expires: " + (lic.expiry ? new Date(lic.expiry).toLocaleDateString() : "N/A");
+  }
+
+  function showFree() {
+    $("premiumSection").classList.add("hidden");
+    $("deactivateWrap").classList.add("hidden");
+    $("licToggle").classList.add("hidden");
+    $("activationSection").classList.remove("hidden");
+    $("planBadge").textContent = "FREE";
+    $("planBadge").style.cssText = "";
+    $("statusIcon").textContent   = "🔒";
+    $("statusPlan").textContent   = "Free Plan";
+    $("statusDetail").textContent = "Enter your key to unlock premium";
+    clearMsg(); input.value = ""; updateHint();
+  }
+
+  // ── Activate ──────────────────────────────────────────────────────────────
+  $("activateBtn").addEventListener("click", async () => {
+    const key = input.value.trim().toUpperCase();
+
+    if (!key) { showMsg("Please enter your activation key."); return; }
+
+    // Strict format check — must be exactly 5-5-5-5 to match backend
+    if (!KEY_RE.test(key)) {
+      const raw = key.replace(/-/g, "");
+      input.className = "license-input bad";
+      if (raw.length < 20) {
+        showMsg(
+          "Your key is incomplete — it has " + raw.length + " characters but needs 20.\n\n" +
+          "You entered: " + key + "\n\n" +
+          "Please check your key and try again, or contact support on WhatsApp.",
+          "warn"
+        );
+      } else {
+        showMsg("Invalid key format. Keys must be XXXXX-XXXXX-XXXXX-XXXXX (4 groups of 5 letters/numbers).", "error");
+      }
+      return;
+    }
+
+    $("activateBtn").disabled = true;
+    $("btnText").textContent = "Verifying…";
+    showMsg("Contacting server…", "info");
+
+    try {
+      // Owner key — offline activation
+      if (OWNER_KEYS.has(key)) {
+        const lic = { key, plan: "lifetime", expiry: null, lifetime: true, premium: true, verified: Date.now() };
+        await storeSet({ [STORAGE_KEY]: lic });
+        clearMsg();
+        showMsg("✅ Activated! Welcome.", "success");
+        showPremium(lic);
+        return;
+      }
+
+      const deviceId = await getDeviceId();
+      const result   = await bridge.verifyLicense(key, deviceId);
+
+      if (!result)      { showMsg("No response from server. Check your internet connection."); return; }
+      if (!result.ok)   { showMsg("Connection error: " + (result.error || "Unknown")); return; }
+      if (!result.data) { showMsg("Server returned empty response (HTTP " + result.status + ")."); return; }
+
+      const { valid, lifetime, plan, expiry, reason } = parseServerData(result.data);
+
+      if (valid) {
+        const lic = { key, plan, expiry, lifetime: !!lifetime, premium: true, verified: Date.now() };
+        await storeSet({ [STORAGE_KEY]: lic });
+        clearMsg();
+        showMsg("✅ Activated! Welcome to " + (lifetime ? "Lifetime" : plan) + " plan.", "success");
+        showPremium(lic);
+      } else {
+        // Give actionable error message
+        const why = reason || "Key not found.";
+        if (why.includes("not found")) {
+          showMsg("❌ Key not found in our system.\n\nYou entered: " + key + "\n\nPlease double-check the key or contact support on WhatsApp if you believe this is an error.", "error");
+        } else if (why.includes("device")) {
+          showMsg("❌ This key is already activated on another device.\n\nContact support on WhatsApp to reset it.", "warn");
+        } else if (why.includes("expired")) {
+          showMsg("❌ This key has expired. Contact support on WhatsApp to renew.", "warn");
+        } else if (why.includes("deactivated")) {
+          showMsg("❌ This key has been deactivated. Contact support on WhatsApp.", "warn");
+        } else {
+          showMsg("❌ " + why, "error");
+        }
+      }
+
+    } catch (err) {
+      showMsg("Unexpected error: " + err.message);
+    } finally {
+      $("activateBtn").disabled = false;
+      $("btnText").textContent = "Activate Premium";
+    }
+  });
+
+  input.addEventListener("keydown", e => { if (e.key === "Enter") $("activateBtn").click(); });
+
+  // ── Deactivate ────────────────────────────────────────────────────────────
+  $("licToggle").addEventListener("click", () => $("deactivateWrap").classList.toggle("hidden"));
+  $("deactivateBtn").addEventListener("click", async () => {
+    if (!confirm("Deactivate license on this device?")) return;
+    await storeRemove(STORAGE_KEY);
+    showFree();
+  });
+
+  // ── WhatsApp actions ──────────────────────────────────────────────────────
+  const wa = js => bridge.waExecute(js).catch(() => {});
+
+  function btnFeedback(btn) {
+    btn.style.opacity = "0.55";
+    btn.style.transform = "scale(0.97)";
+    setTimeout(() => { btn.style.opacity = ""; btn.style.transform = ""; }, 180);
+  }
+
+  // Focus WhatsApp Window — uses focusMain IPC (actually brings the window forward)
+  $("btnFocusWa").addEventListener("click", function() {
+    btnFeedback(this);
+    bridge.focusMain().catch(() => {});
+  });
+
+  // Open Pro Sender Panel — fires the exact event procntt.js listens for
+  $("btnOpenPanel").addEventListener("click", function() {
+    btnFeedback(this);
+    bridge.focusMain().catch(() => {});
+    wa(`document.dispatchEvent(new CustomEvent('cwp_open_panel'));`);
+  });
+
+  // Open Scheduler — open panel then click Scheduler tab inside it
+  $("btnScheduler").addEventListener("click", function() {
+    btnFeedback(this);
+    bridge.focusMain().catch(() => {});
+    wa(`
+      (function(){
+        document.dispatchEvent(new CustomEvent('cwp_open_panel'));
+        // Give the panel 400ms to render, then click the Scheduler tab
+        setTimeout(function(){
+          var tabs = document.querySelectorAll('.cwp-tab, [data-tab], .pro-tab-btn');
+          tabs.forEach(function(t){
+            if (t.textContent && t.textContent.toLowerCase().includes('schedul')) t.click();
+          });
+        }, 400);
+      })();
+    `);
+  });
+
+  // Open Auto Reply — open panel then click Auto Reply tab
+  $("btnAutoReply").addEventListener("click", function() {
+    btnFeedback(this);
+    bridge.focusMain().catch(() => {});
+    wa(`
+      (function(){
+        document.dispatchEvent(new CustomEvent('cwp_open_panel'));
+        setTimeout(function(){
+          var tabs = document.querySelectorAll('.cwp-tab, [data-tab], .pro-tab-btn');
+          tabs.forEach(function(t){
+            if (t.textContent && t.textContent.toLowerCase().includes('auto') ||
+                t.textContent.toLowerCase().includes('reply')) t.click();
+          });
+        }, 400);
+      })();
+    `);
+  });
+
+  // Export Group Contacts — fire the PROS export event
+  $("btnContacts").addEventListener("click", function() {
+    btnFeedback(this);
+    bridge.focusMain().catch(() => {});
+    wa(`window.dispatchEvent(new CustomEvent('PROS::export-group', {detail: {groupId: null}}));`);
+  });
+
+  ["supportLink","footerLink"].forEach(id =>
+    $(id).addEventListener("click", e => { e.preventDefault(); bridge.openExternal(SUPPORT_WA); })
+  );
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  (async () => {
+    try {
+      const lic = await getLicense();
+      if (lic && await isPremium()) {
+        showPremium(lic);
+        if (!OWNER_KEYS.has(lic.key)) {
+          try {
+            const r = await bridge.verifyLicense(lic.key, await getDeviceId());
+            if (r && r.ok && r.data) {
+              const { valid, lifetime, plan, expiry } = parseServerData(r.data);
+              if (!valid) { await storeRemove(STORAGE_KEY); showFree(); }
+              else {
+                const upd = { ...lic, plan, expiry, lifetime: !!lifetime, verified: Date.now() };
+                await storeSet({ [STORAGE_KEY]: upd });
+                showPremium(upd);
+              }
+            }
+          } catch (_) {}
+        }
+      } else { showFree(); }
+    } catch (_) { showFree(); }
+  })();
+
+})();
+</script>
+</body>
+</html>
