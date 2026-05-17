@@ -65,8 +65,6 @@ function createMainWindow(EXT_DIR) {
     icon:  iconPath(EXT_DIR),
     webPreferences: { nodeIntegration: false, contextIsolation: true },
     backgroundColor: "#111b21",
-    // show:true is default — show immediately, don't wait for ready-to-show
-    // (ready-to-show never fires on a shell window with no URL of its own)
   });
 
   waView = new BrowserView({
@@ -105,6 +103,10 @@ function sizeWaView() {
 async function injectInline(wc, scriptPath) {
   const name = path.basename(scriptPath);
   try {
+    if (!fs.existsSync(scriptPath)) {
+      console.warn("[CWP] inline inject skipped (file not found):", name);
+      return false;
+    }
     let code = fs.readFileSync(scriptPath, "utf8");
     if (code.charCodeAt(0) === 0xFEFF) code = code.slice(1);
     await wc.executeJavaScript(
@@ -159,8 +161,10 @@ async function injectExtensionScripts(EXT_DIR) {
     path.join(EXT_DIR, "css", "procntt.css"),
   ]) {
     try {
-      await wc.insertCSS(fs.readFileSync(f, "utf8"));
-      console.log("[CWP] ✓ css:", path.basename(f));
+      if (fs.existsSync(f)) {
+        await wc.insertCSS(fs.readFileSync(f, "utf8"));
+        console.log("[CWP] ✓ css:", path.basename(f));
+      }
     } catch (e) {
       console.warn("[CWP] CSS failed:", path.basename(f), e.message);
     }
@@ -178,8 +182,16 @@ async function injectExtensionScripts(EXT_DIR) {
   ]) { await injectInline(wc, s); }
 
   // 4. Large scripts via script tag
-  for (const url of ["cwp://ext/js/procntt.js", "cwp://ext/js/proinjt.js"]) {
-    await injectScriptTag(wc, url);
+  // Note: We use the patched procntt.js if available
+  const patchedProcntt = path.join(__dirname, "_cwp_patched", "procntt.js");
+  if (fs.existsSync(patchedProcntt)) {
+    console.log("[CWP] Injecting patched procntt.js inline...");
+    await injectInline(wc, patchedProcntt);
+    await injectScriptTag(wc, "cwp://ext/js/proinjt.js");
+  } else {
+    for (const url of ["cwp://ext/js/procntt.js", "cwp://ext/js/proinjt.js"]) {
+      await injectScriptTag(wc, url);
+    }
   }
 
   console.log("[CWP] All scripts injected ✓");
@@ -216,18 +228,14 @@ function createTray(EXT_DIR) {
 
 // ── IPC ───────────────────────────────────────────────────────────────────────
 ipcMain.handle("verifyLicense", async (_, { licenseKey, deviceId }) => {
-  // Offline validation — works without the backend server
-  // Keys are validated by checksum: split into 4 parts, sum char codes, check mod
   try {
     const key = (licenseKey || "").toUpperCase().trim();
     const OWNER_KEYS = new Set(["5U6DE-SKO94-9127C-JRNBY", "FCUCS-6VM6S-UHD3B-EP7SB"]);
 
-    // Owner keys — instant lifetime
     if (OWNER_KEYS.has(key)) {
       return { ok: true, status: 200, data: { valid: true, plan: "lifetime", lifetime: true, expiry: null } };
     }
 
-    // Try backend with short timeout
     const https = require("https");
     const result = await new Promise((resolve) => {
       const body = JSON.stringify({ licenseKey: key, deviceId });
@@ -264,9 +272,39 @@ ipcMain.handle("notify",       (_, {title, message}) => {
   if (Notification.isSupported()) new Notification({ title, body: message }).show();
 });
 ipcMain.handle("openExternal", (_, url) => shell.openExternal(url));
+
+ipcMain.handle("focusMain", () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+  return true;
+});
+
+ipcMain.handle("openPanel", () => {
+  openPanelWindow();
+  return true;
+});
+
 ipcMain.handle("wa:executeScript", async (_, code) => {
   try { return await waView.webContents.executeJavaScript(code); } catch { return null; }
 });
+
+ipcMain.handle("wa:openPanel", async () => {
+  try {
+    await waView.webContents.executeJavaScript(`
+      (function(){
+        try {
+          if (typeof togglePanel === 'function') { togglePanel(); }
+          else { document.dispatchEvent(new CustomEvent('cwp_open_panel')); }
+        } catch(e) { console.error('[CWP] wa:openPanel error:', e); }
+      })();
+    `);
+    return true;
+  } catch { return false; }
+});
+
 ipcMain.handle("wa:sendToPage", async (_, channel, payload) => {
   try {
     await waView.webContents.executeJavaScript(
