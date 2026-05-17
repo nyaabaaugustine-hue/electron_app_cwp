@@ -7,57 +7,62 @@
   "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",
-    "build:win": "electron-builder --win --x64",
-    "build:mac": "electron-builder --mac",
+    "build:win":   "electron-builder --win --x64",
+    "build:mac":   "electron-builder --mac",
     "build:linux": "electron-builder --linux"
   },
   "dependencies": {
     "electron-store": "^8.2.0"
   },
   "devDependencies": {
-    "electron": "^29.4.6",
+    "electron":         "^29.4.6",
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.cyberwhatsapppro.desktop",
+    "appId":       "com.cyberwhatsapppro.desktop",
     "productName": "Cyber WhatsApp Pro",
-    "copyright": "Copyright © 2024 Cyber WhatsApp Pro",
-    "directories": {
-      "output": "dist"
-    },
+    "copyright":   "Copyright © 2024 Cyber WhatsApp Pro",
+    "asar": true,
+    "directories": { "output": "dist" },
+
     "files": [
       "main.js",
       "preload.js",
       "chrome-shim.js",
       "renderer/**/*",
       "assets/**/*",
-      "node_modules/**/*",
-      "../chrome_Extenton/**/*"
+      "node_modules/**/*"
     ],
+
     "extraResources": [
       {
         "from": "../chrome_Extenton",
-        "to": "chrome_Extenton"
+        "to":   "chrome_Extenton",
+        "filter": [
+          "**/*",
+          "!*.map"
+        ]
       }
     ],
+
     "win": {
       "target": [{ "target": "nsis", "arch": ["x64"] }],
       "icon": "assets/icon.ico"
     },
     "mac": {
       "target": "dmg",
-      "icon": "assets/icon.icns"
+      "icon":   "assets/icon.icns"
     },
     "linux": {
       "target": "AppImage",
-      "icon": "assets/icon.png"
+      "icon":   "assets/icon.png"
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick":                        false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "Cyber WhatsApp Pro"
+      "createDesktopShortcut":           true,
+      "createStartMenuShortcut":         true,
+      "shortcutName":                    "Cyber WhatsApp Pro"
     }
   }
 }

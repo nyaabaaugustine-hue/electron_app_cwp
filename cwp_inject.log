@@ -1,64 +1,18 @@
-2026-05-16T12:00:45.049Z [CWP] === Starting injection ===
-2026-05-16T12:00:45.360Z [CWP] EXT_BASE set
-2026-05-16T12:00:45.696Z [CWP] shim done
-2026-05-16T12:00:45.938Z [CWP] css: driver.css
-2026-05-16T12:00:46.121Z [CWP] css: procntt.css
-2026-05-16T12:00:46.269Z [CWP] ✓ jquery.js
-2026-05-16T12:00:46.340Z [CWP] ✓ driver.js.iife.js
-2026-05-16T12:00:46.374Z [CWP] ✓ prodata.js
-2026-05-16T12:00:46.384Z [CWP] ✓ ga-code.js
-2026-05-16T12:00:46.500Z [CWP] ✓ protsrt.js
-2026-05-16T12:00:46.666Z [CWP] ✓ driver.js
-2026-05-16T12:00:46.767Z [CWP] ✓ promsg.js
-2026-05-16T12:00:46.889Z [CWP] procntt.js: ✓
-2026-05-16T12:00:46.935Z [CWP] trigger button injected
-2026-05-16T12:01:12.454Z [CWP] === Starting injection ===
-2026-05-16T12:01:13.111Z [CWP] EXT_BASE set
-2026-05-16T12:01:13.279Z [CWP] shim done
-2026-05-16T12:01:13.307Z [CWP] css: driver.css
-2026-05-16T12:01:13.384Z [CWP] css: procntt.css
-2026-05-16T12:01:13.872Z [CWP] ✓ jquery.js
-2026-05-16T12:01:13.895Z [CWP] proinjt.js: ✓
-2026-05-16T12:01:13.898Z [CWP] === Injection complete ===
-2026-05-16T12:01:13.937Z [CWP] ✓ driver.js.iife.js
-2026-05-16T12:01:14.006Z [CWP] ✓ prodata.js
-2026-05-16T12:01:14.233Z [CWP] ✓ ga-code.js
-2026-05-16T12:01:14.271Z [CWP] ✓ protsrt.js
-2026-05-16T12:01:14.358Z [CWP] ✓ driver.js
-2026-05-16T12:01:14.433Z [CWP] ✓ promsg.js
-2026-05-16T12:01:14.541Z [CWP] procntt.js: ✓
-2026-05-16T12:01:14.551Z [CWP] trigger button injected
-2026-05-16T12:01:28.429Z [CWP] proinjt.js: ✓
-2026-05-16T12:01:28.432Z [CWP] === Injection complete ===
-2026-05-16T12:11:01.749Z [CWP] === Starting injection ===
-2026-05-16T12:11:01.767Z [CWP] EXT_BASE set
-2026-05-16T12:11:01.824Z [CWP] shim done
-2026-05-16T12:11:01.928Z [CWP] css: driver.css
-2026-05-16T12:11:02.030Z [CWP] css: procntt.css
-2026-05-16T12:11:02.094Z [CWP] ✓ jquery.js
-2026-05-16T12:11:02.115Z [CWP] ✓ driver.js.iife.js
-2026-05-16T12:11:02.129Z [CWP] ✓ prodata.js
-2026-05-16T12:11:02.142Z [CWP] ✓ ga-code.js
-2026-05-16T12:11:02.148Z [CWP] ✓ protsrt.js
-2026-05-16T12:11:02.159Z [CWP] ✓ driver.js
-2026-05-16T12:11:02.178Z [CWP] ✓ promsg.js
-2026-05-16T12:11:02.235Z [CWP] procntt.js: ✓
-2026-05-16T12:11:02.265Z [CWP] trigger button injected
-2026-05-16T12:11:15.195Z [CWP] proinjt.js: ✓
-2026-05-16T12:11:15.206Z [CWP] === Injection complete ===
-2026-05-16T12:11:16.410Z [CWP] === Starting injection ===
-2026-05-16T12:11:16.425Z [CWP] EXT_BASE set
-2026-05-16T12:11:16.450Z [CWP] shim done
-2026-05-16T12:11:16.466Z [CWP] css: driver.css
-2026-05-16T12:11:16.480Z [CWP] css: procntt.css
-2026-05-16T12:11:16.512Z [CWP] ✓ jquery.js
-2026-05-16T12:11:16.525Z [CWP] ✓ driver.js.iife.js
-2026-05-16T12:11:16.638Z [CWP] ✓ prodata.js
-2026-05-16T12:11:16.735Z [CWP] ✓ ga-code.js
-2026-05-16T12:11:16.805Z [CWP] ✓ protsrt.js
-2026-05-16T12:11:16.833Z [CWP] ✓ driver.js
-2026-05-16T12:11:17.343Z [CWP] ✓ promsg.js
-2026-05-16T12:11:17.400Z [CWP] procntt.js: ✓
-2026-05-16T12:11:17.431Z [CWP] trigger button injected
-2026-05-16T12:11:24.231Z [CWP] proinjt.js: ✓
-2026-05-16T12:11:24.232Z [CWP] === Injection complete ===
+2026-05-16T13:03:33.182Z [CWP] EXT_BASE set
+2026-05-16T13:03:33.250Z [CWP] shim done
+2026-05-16T13:03:33.688Z [CWP] css: driver.css
+2026-05-16T13:03:33.882Z [CWP] css: procntt.css
+2026-05-16T13:03:47.745Z [CWP] ✓ jquery.js
+2026-05-16T13:04:05.153Z [CWP] ✓ driver.js.iife.js
+2026-05-16T13:04:44.893Z [CWP] ✓ prodata.js
+2026-05-16T13:05:15.951Z [CWP] ✓ ga-code.js
+2026-05-16T13:05:35.273Z [CWP] ✓ protsrt.js
+2026-05-16T13:05:45.489Z [CWP] ✓ driver.js
+2026-05-16T13:05:51.079Z [CWP] ✓ promsg.js
+2026-05-16T13:05:57.007Z [CWP] procntt.js: ✓
+2026-05-16T13:05:57.132Z [CWP] trigger button injected
+2026-05-16T13:06:03.613Z [CWP] proinjt.js: ✓
+2026-05-16T13:06:03.680Z [CWP] TEST SIG: 2
+2026-05-16T13:06:03.711Z [CWP] PAGE URL: https://web.whatsapp.com/
+2026-05-16T13:06:03.724Z [CWP] PAGE STATE: {"triggerButton":true,"panelElement":false,"togglePanel":"undefined","cwpFloatingPanelInitialized":false,"chromeRuntime":false,"cwpOpenPanelEvent":true}
+2026-05-16T13:06:03.725Z [CWP] === Injection complete ===

@@ -177,7 +177,7 @@
   }
 
   // ── Build window.chrome ─────────────────────────────────────────────────────
-  window.chrome = {
+  const chromeObject = {
     runtime: {
       id:               "electron-cwp-desktop",
       lastError:        undefined,
@@ -234,6 +234,21 @@
       contains: (_, cb) => { if (cb) cb(true); },
     },
   };
+
+  try {
+    if (!Object.prototype.hasOwnProperty.call(window, 'chrome')) {
+      Object.defineProperty(window, 'chrome', {
+        value: chromeObject,
+        configurable: false,
+        enumerable: true,
+        writable: false,
+      });
+    } else if (!window.chrome.runtime) {
+      window.chrome.runtime = chromeObject.runtime;
+    }
+  } catch (e) {
+    window.chrome = chromeObject;
+  }
 
   // ── Panel → page event bridge ────────────────────────────────────────────────
   window.addEventListener("cwp:fromPanel", (e) => {

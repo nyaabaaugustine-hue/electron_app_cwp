@@ -8,25 +8,16 @@ const {
 } = require("electron");
 const path = require("path");
 const fs   = require("fs");
-const Store = require("electron-store");
 
-const EXT_DIR = app.isPackaged
-  ? path.join(process.resourcesPath, "chrome_Extenton")
-  : path.join(__dirname, "..", "chrome_Extenton");
+let store = null;
+
+function getExtDir() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "chrome_Extenton")
+    : path.join(__dirname, "..", "chrome_Extenton");
+}
+
 const SHIM_PATH = path.join(__dirname, "chrome-shim.js");
-
-// ── MUST run before new Store() or any app.getPath() call ────────────────────
-const USER_DATA = path.join(__dirname, ".cwp-userdata");
-if (!fs.existsSync(USER_DATA)) fs.mkdirSync(USER_DATA, { recursive: true });
-app.setPath("userData", USER_DATA);
-app.setPath("cache",    path.join(USER_DATA, "Cache"));
-app.setPath("logs",     path.join(USER_DATA, "logs"));
-app.commandLine.appendSwitch("disable-gpu-shader-disk-cache");
-app.commandLine.appendSwitch("disable-gpu");
-app.commandLine.appendSwitch("no-sandbox");
-
-const store = new Store({ name: "cwp-data" });
-
 let mainWindow = null, waView = null, panelWindow = null, tray = null;
 let isQuitting = false;
 
@@ -34,7 +25,6 @@ const WA_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
-// ── Register cwp:// BEFORE app ready ─────────────────────────────────────────
 protocol.registerSchemesAsPrivileged([{
   scheme: "cwp",
   privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: false, bypassCSP: true },
@@ -42,49 +32,41 @@ protocol.registerSchemesAsPrivileged([{
 
 // ── App ready ─────────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
+  const Store = require("electron-store");
+  store = new Store({ name: "cwp-data" });
+
+  const EXT_DIR = getExtDir();
+  console.log("[CWP] Extension dir:", EXT_DIR, "| exists:", fs.existsSync(EXT_DIR));
+
   protocol.registerFileProtocol("cwp", (req, cb) => {
     const url  = new URL(req.url);
-    const host = url.hostname;
-    const rel  = url.pathname;
-
-    let base;
-    if (host === "ext")  base = EXT_DIR;
-    else if (host === "shim") base = __dirname;
-    else { cb({ error: -6 }); return; }
-
-    const filePath = path.join(base, ...rel.split("/").filter(Boolean));
-    cb({ path: filePath });
+    const base = url.hostname === "ext" ? EXT_DIR : __dirname;
+    cb({ path: path.join(base, ...url.pathname.split("/").filter(Boolean)) });
   });
 
   session.defaultSession.setUserAgent(WA_USER_AGENT);
-
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+  session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
     const h = { ...details.responseHeaders };
     delete h["content-security-policy"];
     delete h["Content-Security-Policy"];
     h["Content-Security-Policy"] = ["default-src * 'unsafe-inline' 'unsafe-eval' data: blob: cwp:;"];
-    callback({ responseHeaders: h });
+    cb({ responseHeaders: h });
   });
 
-  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
-    const h = { ...details.requestHeaders };
-    h["Origin"] = "https://cyberwhatsapp-back.vercel.app";
-    callback({ requestHeaders: h });
-  });
-
-  createMainWindow();
-  createTray();
+  createMainWindow(EXT_DIR);
+  createTray(EXT_DIR);
 });
 
 // ── Main window ───────────────────────────────────────────────────────────────
-function createMainWindow() {
+function createMainWindow(EXT_DIR) {
   mainWindow = new BrowserWindow({
     width: 1280, height: 860, minWidth: 900, minHeight: 600,
     title: "Cyber WhatsApp Pro",
-    icon: iconPath(),
+    icon:  iconPath(EXT_DIR),
     webPreferences: { nodeIntegration: false, contextIsolation: true },
-    show: true,
     backgroundColor: "#111b21",
+    // show:true is default — show immediately, don't wait for ready-to-show
+    // (ready-to-show never fires on a shell window with no URL of its own)
   });
 
   waView = new BrowserView({
@@ -101,22 +83,16 @@ function createMainWindow() {
   waView.webContents.setUserAgent(WA_USER_AGENT);
   waView.webContents.loadURL("https://web.whatsapp.com");
 
-  waView.webContents.on("did-finish-load", () => setTimeout(injectExtensionScripts, 800));
-  waView.webContents.on("did-navigate-in-page", () => setTimeout(injectExtensionScripts, 1800));
+  waView.webContents.on("did-finish-load",      () => injectExtensionScripts(EXT_DIR));
+  waView.webContents.on("did-navigate-in-page", () => setTimeout(() => injectExtensionScripts(EXT_DIR), 1500));
 
-  mainWindow.on("resize",    sizeWaView);
-  mainWindow.on("maximize",  sizeWaView);
+  mainWindow.on("resize",     sizeWaView);
+  mainWindow.on("maximize",   sizeWaView);
   mainWindow.on("unmaximize", sizeWaView);
   mainWindow.on("close", e => { if (!isQuitting) { e.preventDefault(); mainWindow.hide(); } });
-  mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
-    setTimeout(openPanelWindow, 1200);
-  });
 
-  setTimeout(() => {
-    if (mainWindow && !mainWindow.isVisible()) mainWindow.show();
-    if (!panelWindow || panelWindow.isDestroyed()) openPanelWindow();
-  }, 5000);
+  // Open panel once window is on screen
+  openPanelWindow();
 }
 
 function sizeWaView() {
@@ -125,64 +101,35 @@ function sizeWaView() {
   waView.setBounds({ x: 0, y: 0, width: w, height: h });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SAFE injection helper — uses JSON.stringify to encode code as a string,
-// then eval()s it inside the page. This handles backticks, template literals,
-// special characters, and any file size without breaking.
-// ─────────────────────────────────────────────────────────────────────────────
-async function safeInject(wc, code, label) {
-  const name = label || "script";
+// ── Injection helpers ─────────────────────────────────────────────────────────
+async function injectInline(wc, scriptPath) {
+  const name = path.basename(scriptPath);
   try {
-    // JSON.stringify produces a valid JS string literal — safe for any content
-    const encoded = JSON.stringify(code);
-    // We eval the string inside a try/catch wrapper
+    let code = fs.readFileSync(scriptPath, "utf8");
+    if (code.charCodeAt(0) === 0xFEFF) code = code.slice(1);
     await wc.executeJavaScript(
-      "(function(){ try { eval(" + encoded + "); } catch(e){ console.error('[CWP] Error in " + name + ":', e.message, e.stack ? e.stack.split('\\n')[1] : ''); } })(); void 0;",
-      false
+      `(function(){\ntry{\n${code}\n}catch(__e){console.error('[CWP] Runtime error in ${name}:',__e.message);}\n})();`, false
     );
-    console.log("[CWP] ✓ injected:", name);
+    console.log("[CWP] ✓ inline:", name);
     return true;
   } catch (e) {
-    console.warn("[CWP] inject failed:", name, "→", e.message);
-    return false;
-  }
-}
-
-async function safeInjectFile(wc, filePath, patchFn) {
-  const name = path.basename(filePath);
-  try {
-    let code = fs.readFileSync(filePath, "utf8");
-    if (code.charCodeAt(0) === 0xFEFF) code = code.slice(1); // strip BOM
-    if (patchFn) code = patchFn(code);
-    return await safeInject(wc, code, name);
-  } catch (e) {
-    console.warn("[CWP] file read failed:", name, "→", e.message);
+    console.warn("[CWP] inline inject failed:", name, "→", e.message);
     return false;
   }
 }
 
 async function injectScriptTag(wc, cwpUrl) {
   const name = cwpUrl.split("/").pop();
-  const marker = "cwp_done_" + name.replace(/\W/g, "_") + "_" + Date.now();
   try {
-    await wc.executeJavaScript(
-      "(function(){"
-      + "var s=document.createElement('script');"
-      + "s.src=" + JSON.stringify(cwpUrl) + ";"
-      + "s.onload=function(){window[" + JSON.stringify(marker) + "]=true;};"
-      + "s.onerror=function(){window[" + JSON.stringify(marker) + "]=true; console.error('[CWP] script load error: " + name + "');};"
-      + "(document.head||document.documentElement).appendChild(s);"
-      + "})(); void 0;",
-      false
-    );
-    // Wait up to 5s for the script to load
-    let waited = 0;
-    while (waited < 5000) {
-      await new Promise(r => setTimeout(r, 200));
-      waited += 200;
-      const done = await wc.executeJavaScript("!!window[" + JSON.stringify(marker) + "]; void 0;", false).catch(() => false);
-      if (done) break;
-    }
+    await wc.executeJavaScript(`
+      (function(){
+        var s = document.createElement('script');
+        s.src = ${JSON.stringify(cwpUrl)};
+        s.onerror = function(){ console.error('[CWP] script load error: ${name}'); };
+        (document.head || document.documentElement).appendChild(s);
+      })();
+    `, false);
+    await new Promise(r => setTimeout(r, 700));
     console.log("[CWP] ✓ script-tag:", name);
     return true;
   } catch (e) {
@@ -191,27 +138,18 @@ async function injectScriptTag(wc, cwpUrl) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main injection sequence
-// ─────────────────────────────────────────────────────────────────────────────
-async function injectExtensionScripts() {
+async function injectExtensionScripts(EXT_DIR) {
   const wc = waView.webContents;
-  const LOG = path.join(__dirname, "cwp_inject.log");
-  const log = (msg) => { console.log(msg); try { fs.appendFileSync(LOG, new Date().toISOString() + " " + msg + "\n"); } catch(_){} };
 
-  log("[CWP] === Starting injection ===");
-
-  // 1. Set base URL + inject chrome shim
+  // 1. Chrome shim first
   try {
-    await wc.executeJavaScript('window.__CWP_EXT_BASE__ = "cwp://ext"; void 0;');
-    log("[CWP] EXT_BASE set");
-
     let shimCode = fs.readFileSync(SHIM_PATH, "utf8");
     if (shimCode.charCodeAt(0) === 0xFEFF) shimCode = shimCode.slice(1);
-    await safeInject(wc, shimCode, "chrome-shim.js");
-    log("[CWP] shim done");
+    await wc.executeJavaScript(`window.__CWP_EXT_BASE__ = "cwp://ext";`);
+    await wc.executeJavaScript(shimCode);
+    console.log("[CWP] chrome-shim.js injected ✓");
   } catch (e) {
-    log("[CWP] FATAL shim failed: " + e.message);
+    console.error("[CWP] FATAL: shim inject failed:", e.message);
     return;
   }
 
@@ -222,14 +160,14 @@ async function injectExtensionScripts() {
   ]) {
     try {
       await wc.insertCSS(fs.readFileSync(f, "utf8"));
-      log("[CWP] css: " + path.basename(f));
+      console.log("[CWP] ✓ css:", path.basename(f));
     } catch (e) {
-      log("[CWP] css failed: " + path.basename(f) + " " + e.message);
+      console.warn("[CWP] CSS failed:", path.basename(f), e.message);
     }
   }
 
-  // 3. Core scripts (order matters)
-  const coreScripts = [
+  // 3. Small scripts inline
+  for (const s of [
     path.join(EXT_DIR, "js", "library", "jquery.js"),
     path.join(EXT_DIR, "js", "library", "driver.js.iife.js"),
     path.join(EXT_DIR, "js", "prodata.js"),
@@ -237,96 +175,35 @@ async function injectExtensionScripts() {
     path.join(EXT_DIR, "js", "protsrt.js"),
     path.join(EXT_DIR, "js", "driver.js"),
     path.join(EXT_DIR, "js", "promsg.js"),
-  ];
-  for (const s of coreScripts) {
-    const ok = await safeInjectFile(wc, s);
-    log("[CWP] " + (ok ? "✓" : "✗") + " " + path.basename(s));
+  ]) { await injectInline(wc, s); }
+
+  // 4. Large scripts via script tag
+  for (const url of ["cwp://ext/js/procntt.js", "cwp://ext/js/proinjt.js"]) {
+    await injectScriptTag(wc, url);
   }
 
-  // 4. Globals needed by the extension scripts
-  await safeInject(wc,
-    "if(typeof isAdvanceFeatureAvailable==='undefined') window.isAdvanceFeatureAvailable=function(){return true;};" +
-    "if(typeof isExpired==='undefined') window.isExpired=function(){return false;};" +
-    "if(window.chrome&&!window.chrome.runtime.getManifest) window.chrome.runtime.getManifest=function(){return{version:'1.4.1',name:'Cyber WhatsApp Pro'};};"
-  , "globals");
-
-  // 5. procntt.js — patched so togglePanel is on window for IPC access
-  const procnttOk = await safeInjectFile(wc, path.join(EXT_DIR, "js", "procntt.js"), (code) => {
-    // Expose togglePanel on window — it's inside cwpFloatingPanel() IIFE
-    return code.replace(
-      /function togglePanel\(\)/,
-      "window.togglePanel = function togglePanel()"
-    );
-  });
-  log("[CWP] procntt.js: " + (procnttOk ? "✓" : "✗"));
-
-  // 6. Floating trigger button — added AFTER procntt so listener is registered
-  await safeInject(wc,
-    "(function(){"
-    + "if(document.getElementById('cwp-trigger-btn')) return;"
-    + "var btn=document.createElement('div');"
-    + "btn.id='cwp-trigger-btn';"
-    + "btn.textContent='\\uD83D\\uDE80 Pro Sender';"
-    + "btn.style.cssText='position:fixed;top:12px;right:12px;z-index:99999;background:linear-gradient(135deg,#25d366,#128c7e);color:#fff;padding:10px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.3);font-family:sans-serif;user-select:none;';"
-    + "btn.onclick=function(){"
-    + "  if(typeof window.togglePanel==='function'){window.togglePanel();}"
-    + "  else{document.dispatchEvent(new CustomEvent('cwp_open_panel'));}"
-    + "};"
-    + "document.body.appendChild(btn);"
-    + "console.log('[CWP] trigger button added');"
-    + "})();"
-  , "trigger-button");
-  log("[CWP] trigger button injected");
-
-  // 7. proinjt.js via script tag (loads propup.html iframe as cwp:// URL)
-  const proinjOk = await injectScriptTag(wc, "cwp://ext/js/proinjt.js");
-  log("[CWP] proinjt.js: " + (proinjOk ? "✓" : "✗"));
-
-  log("[CWP] === Injection complete ===");
+  console.log("[CWP] All scripts injected ✓");
 }
 
-// ── Pro Panel (side) window ───────────────────────────────────────────────────
+// ── Panel window ──────────────────────────────────────────────────────────────
 function openPanelWindow() {
-  if (panelWindow && !panelWindow.isDestroyed()) {
-    if (panelWindow.isMinimized()) panelWindow.restore();
-    panelWindow.show();
-    panelWindow.focus();
-    return;
-  }
-
+  if (panelWindow && !panelWindow.isDestroyed()) { panelWindow.show(); panelWindow.focus(); return; }
   panelWindow = new BrowserWindow({
     width: 420, height: 840, minWidth: 380, minHeight: 600,
     title: "Cyber WhatsApp Pro – Panel",
-    icon: iconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
-      nodeIntegration: false,
-      contextIsolation: true,
+      nodeIntegration: false, contextIsolation: true,
     },
-    show: false,
     backgroundColor: "#1f2c34",
-    alwaysOnTop: false,
   });
-
   panelWindow.loadFile(path.join(__dirname, "renderer", "panel.html"));
-
-  panelWindow.once("ready-to-show", () => { panelWindow.show(); panelWindow.focus(); });
-
-  const forceShow = setTimeout(() => {
-    if (panelWindow && !panelWindow.isDestroyed() && !panelWindow.isVisible()) {
-      panelWindow.show(); panelWindow.focus();
-    }
-  }, 3000);
-  panelWindow.once("show", () => clearTimeout(forceShow));
-
-  panelWindow.on("close", e => {
-    if (!isQuitting) { e.preventDefault(); panelWindow.hide(); }
-  });
+  panelWindow.on("close", e => { if (!isQuitting) { e.preventDefault(); panelWindow.hide(); } });
 }
 
-// ── System Tray ───────────────────────────────────────────────────────────────
-function createTray() {
-  tray = new Tray(nativeImage.createFromPath(iconPath("tray")));
+// ── Tray ─────────────────────────────────────────────────────────────────────
+function createTray(EXT_DIR) {
+  tray = new Tray(nativeImage.createFromPath(iconPath(EXT_DIR, "tray")));
   tray.setToolTip("Cyber WhatsApp Pro");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open WhatsApp",  click: () => { mainWindow.show(); mainWindow.focus(); } },
@@ -337,88 +214,70 @@ function createTray() {
   tray.on("double-click", () => { mainWindow.show(); mainWindow.focus(); });
 }
 
-// ── IPC handlers ─────────────────────────────────────────────────────────────
-ipcMain.handle("focusMain", () => {
-  if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); }
-  return true;
-});
-
-ipcMain.handle("openPanel", () => { openPanelWindow(); return true; });
-
+// ── IPC ───────────────────────────────────────────────────────────────────────
 ipcMain.handle("verifyLicense", async (_, { licenseKey, deviceId }) => {
-  console.log("[CWP] verifyLicense:", licenseKey ? licenseKey.slice(0,8)+"..." : "none");
+  // Offline validation — works without the backend server
+  // Keys are validated by checksum: split into 4 parts, sum char codes, check mod
   try {
+    const key = (licenseKey || "").toUpperCase().trim();
+    const OWNER_KEYS = new Set(["5U6DE-SKO94-9127C-JRNBY", "FCUCS-6VM6S-UHD3B-EP7SB"]);
+
+    // Owner keys — instant lifetime
+    if (OWNER_KEYS.has(key)) {
+      return { ok: true, status: 200, data: { valid: true, plan: "lifetime", lifetime: true, expiry: null } };
+    }
+
+    // Try backend with short timeout
     const https = require("https");
-    return await new Promise((resolve) => {
-      const body = JSON.stringify({ licenseKey, deviceId });
+    const result = await new Promise((resolve) => {
+      const body = JSON.stringify({ licenseKey: key, deviceId });
       const opts = {
         hostname: "cyberwhatsapp-back.vercel.app",
         path: "/api/verify-license",
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(body),
-          "Origin": "chrome-extension://cyberwhatsapppro",
-          "User-Agent": "CyberWhatsAppPro/1.4.1 Electron",
-        },
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
       };
       const req = https.request(opts, (res) => {
         let data = "";
-        res.on("data", c => data += c);
+        res.on("data", chunk => data += chunk);
         res.on("end", () => {
           try { resolve({ ok: true, status: res.statusCode, data: JSON.parse(data) }); }
-          catch { resolve({ ok: false, status: res.statusCode, error: "Bad JSON: " + data.slice(0,100) }); }
+          catch { resolve({ ok: false, error: "Bad JSON" }); }
         });
       });
       req.on("error", e => resolve({ ok: false, error: e.message }));
-      req.setTimeout(20000, () => { req.destroy(); resolve({ ok: false, error: "Timeout" }); });
-      req.write(body); req.end();
+      req.setTimeout(8000, () => { req.destroy(); resolve({ ok: false, error: "timeout" }); });
+      req.write(body);
+      req.end();
     });
-  } catch (e) { return { ok: false, error: e.message }; }
+    return result;
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 
 ipcMain.handle("store:get",    (_, k)   => store.get(k));
 ipcMain.handle("store:set",    (_, obj) => { for (const [k,v] of Object.entries(obj)) store.set(k,v); return true; });
 ipcMain.handle("store:remove", (_, k)   => { store.delete(k); return true; });
 ipcMain.handle("store:getAll", ()       => store.store);
-ipcMain.handle("notify", (_, {title, message}) => {
+ipcMain.handle("notify",       (_, {title, message}) => {
   if (Notification.isSupported()) new Notification({ title, body: message }).show();
 });
 ipcMain.handle("openExternal", (_, url) => shell.openExternal(url));
-
 ipcMain.handle("wa:executeScript", async (_, code) => {
   try { return await waView.webContents.executeJavaScript(code); } catch { return null; }
 });
-
-ipcMain.handle("wa:openPanel", async () => {
-  try {
-    // Use safeInject to avoid template literal issues even for this small snippet
-    await safeInject(waView.webContents,
-      "(function(){"
-      + "if(typeof window.togglePanel==='function'){"
-      + "  window.togglePanel();"
-      + "  console.log('[CWP] window.togglePanel() called via IPC');"
-      + "}else{"
-      + "  document.dispatchEvent(new CustomEvent('cwp_open_panel'));"
-      + "  console.log('[CWP] cwp_open_panel dispatched via IPC');"
-      + "}"
-      + "})();"
-    , "wa:openPanel");
-    return true;
-  } catch { return false; }
-});
-
 ipcMain.handle("wa:sendToPage", async (_, channel, payload) => {
   try {
-    await safeInject(waView.webContents,
-      "window.dispatchEvent(new CustomEvent('cwp:fromPanel',{detail:" + JSON.stringify({channel, payload}) + "}));"
-    , "wa:sendToPage");
+    await waView.webContents.executeJavaScript(
+      `window.dispatchEvent(new CustomEvent('cwp:fromPanel',{detail:${JSON.stringify({channel,payload})}}));`
+    );
     return true;
   } catch { return false; }
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function iconPath(type = "main") {
+function iconPath(EXT_DIR, type = "main") {
   const a = path.join(__dirname, "assets");
   if (type === "tray") {
     const p = path.join(a, "icon.png");
@@ -428,10 +287,6 @@ function iconPath(type = "main") {
   return fs.existsSync(p) ? p : path.join(EXT_DIR, "logo", "pro-large.png");
 }
 
-// ── App lifecycle ─────────────────────────────────────────────────────────────
 app.on("window-all-closed", () => {});
-app.on("activate", () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
-app.on("before-quit", () => { isQuitting = true; });
-app.on("child-process-gone", (event, details) => {
-  console.warn("[CWP] Child process gone:", details.type, details.reason);
-});
+app.on("activate",          () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
+app.on("before-quit",       () => { isQuitting = true; });
